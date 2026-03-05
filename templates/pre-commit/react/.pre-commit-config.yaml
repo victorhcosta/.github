@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: react-lint
+        name: React lint
+        entry: npm run -s lint
+        language: system
+        pass_filenames: false
+
+      - id: react-test
+        name: React test
+        entry: npm test --silent
+        language: system
+        pass_filenames: false
+
+      - id: react-typecheck
+        name: React typecheck
+        entry: npm run -s typecheck
+        language: system
+        pass_filenames: false

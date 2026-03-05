@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: rn-lint
+        name: React Native lint
+        entry: npm run -s lint
+        language: system
+        pass_filenames: false
+
+      - id: rn-test
+        name: React Native test
+        entry: npm test --silent
+        language: system
+        pass_filenames: false
+
+      - id: rn-typecheck
+        name: React Native typecheck
+        entry: npm run -s typecheck
+        language: system
+        pass_filenames: false

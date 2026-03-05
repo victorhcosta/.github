@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and Discussions
+    url: https://github.com/victorcosta/.github/discussions
+    about: Use Discussions for questions, ideas, and non-actionable topics.
+  - name: Security Report
+    url: https://github.com/victorcosta/.github/security/advisories/new
+    about: Report vulnerabilities privately.
+  - name: Standards and Workflow Docs
+    url: https://github.com/victorcosta/.github/blob/main/README.md
+    about: Check branch, commit, release, and automation standards before opening an issue.
