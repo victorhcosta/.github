@@ -23,17 +23,17 @@ If `pipx` is not available:
 python3 -m pip install --user --upgrade --break-system-packages pre-commit
 ```
 
-## Install commands with symlink (current directory)
-From this repository root:
+## Install commands with symlink
+From the repository root:
 
 ```bash
-ln -sf "$PWD/scripts/gitsync.js" ~/.local/bin/gitsync
-ln -sf "$PWD/scripts/setup-env-branches.js" ~/.local/bin/setup-env-branches
-ln -sf "$PWD/scripts/release.js" ~/.local/bin/release
+ln -sf ./scripts/gitsync.js ~/.local/bin/gitsync
+ln -sf ./scripts/setup-env-branches.js ~/.local/bin/setup-env-branches
+ln -sf ./scripts/release.js ~/.local/bin/release
 
-chmod +x "$PWD/scripts/gitsync.js" \
-  "$PWD/scripts/setup-env-branches.js" \
-  "$PWD/scripts/release.js"
+chmod +x ./scripts/gitsync.js \
+  ./scripts/setup-env-branches.js \
+  ./scripts/release.js
 ```
 
 Ensure `~/.local/bin` is in PATH (zsh):
@@ -42,7 +42,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-`./scripts/gitsync.js` also works, but `"$PWD"` creates an absolute symlink and avoids path ambiguity.
+This keeps documentation aligned with local usage in this repository.
 
 ## Optional aliases (zsh)
 ```bash
@@ -56,12 +56,12 @@ source ~/.zshrc
 ## Configure template source
 Per repository (local):
 ```bash
-gitsync config set --source victorcosta/.github --ref main
+gitsync config set --source OWNER/.github --ref main
 ```
 
 Global (all repositories):
 ```bash
-gitsync config set --global --source victorcosta/.github --ref main
+gitsync config set --global --source OWNER/.github --ref main
 ```
 
 Future switch to organization:
@@ -74,15 +74,15 @@ Configuration:
 ```bash
 gitsync config get
 gitsync config get --global
-gitsync config set --source victorcosta/.github --ref main
-gitsync config set --global --source victorcosta/.github --ref main
+gitsync config set --source OWNER/.github --ref main
+gitsync config set --global --source OWNER/.github --ref main
 ```
 
 Synchronization:
 ```bash
 gitsync --sync
 gitsync --sync --base main --branch chore/sync-standards
-gitsync --sync --source victorcosta/.github --ref main
+gitsync --sync --source OWNER/.github --ref main
 ```
 
 `gitsync --sync` now auto-applies:
@@ -96,6 +96,8 @@ Inside the target repository:
 ```bash
 gitsync --sync --base main --branch chore/sync-standards
 ```
+
+Prerequisite: target repository must have a valid `origin` remote configured and reachable.
 
 ## Create environment branches (`dev`, `staging`, `prod`)
 Inside the repository:

@@ -58,6 +58,35 @@ function ensureBaseFromOrigin(base) {
   sh(`git reset --hard origin/${base}`);
 }
 
+function ensureOriginRemote() {
+  let url = "";
+  try {
+    url = shOut("git remote get-url origin");
+  } catch {
+    die(
+      "Remote 'origin' is not configured in this target repository.\n" +
+      "Run: git remote add origin <repo-url> && git fetch origin"
+    );
+  }
+
+  if (!url) {
+    die(
+      "Remote 'origin' is empty in this target repository.\n" +
+      "Run: git remote set-url origin <repo-url> && git fetch origin"
+    );
+  }
+
+  try {
+    sh("git ls-remote --exit-code origin HEAD > /dev/null");
+  } catch {
+    die(
+      "Remote 'origin' is unreachable or invalid.\n" +
+      "Check access and URL with: git remote -v\n" +
+      "Then run: git fetch origin"
+    );
+  }
+}
+
 function removeIfExists(p) {
   if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
 }
@@ -187,9 +216,9 @@ Sync:
   gitsync --sync [--base main] [--branch chore/sync-standards] [--source <owner>/.github] [--ref main]
 
 Examples:
-  gitsync config set --global --source victorcosta/.github --ref main
+  gitsync config set --global --source OWNER/.github --ref main
   gitsync --sync
-  gitsync config set --global --source MINHAORG/.github --ref main
+  gitsync config set --global --source MYORG/.github --ref main
 `);
 }
 
@@ -355,6 +384,7 @@ function applyCiWorkflow(targetRoot, templateName) {
 function sync(args) {
   ensureGitRepo();
   ensureClean();
+  ensureOriginRemote();
   ensureGhAuth();
 
   const { src, ref } = resolveSource(args);
