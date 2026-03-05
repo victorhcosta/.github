@@ -7,7 +7,6 @@ import os from "node:os";
 const COPY_FOLDERS = [
   { from: ".github", to: ".github" },
   { from: "docs", to: "docs/standards" },
-  { from: "templates/pre-commit", to: "templates/pre-commit" },
 ];
 
 const COPY_FILES = [];
@@ -381,6 +380,65 @@ function applyCiWorkflow(targetRoot, templateName) {
   console.log(`[gitsync] Applied CI workflow template: ${templateName || "node"} -> .github/workflows/ci.yml`);
 }
 
+function createSyncBranch(branch) {
+  try {
+    sh(`git checkout -b ${branch}`);
+  } catch {
+    die(
+      `Branch '${branch}' already exists.\n` +
+      `Use another name with --branch, or delete it first:\n` +
+      `git checkout main && git branch -D ${branch}`
+    );
+  }
+}
+
+function cloneSourceRepo(src, sourceDir) {
+  try {
+    sh(`gh repo clone ${src} "${sourceDir}"`);
+  } catch {
+    die(
+      `Could not clone source repository '${src}'.\n` +
+      `Check repository name and access rights.\n` +
+      `You can test with: gh repo view ${src}`
+    );
+  }
+}
+
+function checkoutSourceRef(sourceDir, ref) {
+  try {
+    sh(`git -C "${sourceDir}" checkout ${ref}`);
+  } catch {
+    die(
+      `Could not checkout ref '${ref}' in source repository.\n` +
+      `Use a valid branch/tag with --ref.`
+    );
+  }
+}
+
+function pushSyncBranch(branch) {
+  try {
+    sh(`git push -u origin ${branch}`);
+  } catch {
+    die(
+      `Could not push branch '${branch}' to origin.\n` +
+      `If workflow files are included, ensure GitHub token has 'workflow' scope:\n` +
+      `gh auth refresh -h github.com -s workflow && gh auth setup-git`
+    );
+  }
+}
+
+function createSyncPr(base, branch, src, ref) {
+  try {
+    sh(`gh pr create --base ${base} --head ${branch} --title "chore: sync standards" --body "Automated sync from ${src}@${ref}."`);
+  } catch {
+    die(
+      `Changes were committed and pushed, but PR creation failed.\n` +
+      `Create it manually with:\n` +
+      `gh pr create --base ${base} --head ${branch} --title "chore: sync standards"`
+    );
+  }
+}
+
 function sync(args) {
   ensureGitRepo();
   ensureClean();
@@ -389,12 +447,12 @@ function sync(args) {
 
   const { src, ref } = resolveSource(args);
   ensureBaseFromOrigin(args.base);
-  sh(`git checkout -b ${args.branch}`);
+  createSyncBranch(args.branch);
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gitsync-"));
   const sourceDir = path.join(tmp, "source");
-  sh(`gh repo clone ${src} "${sourceDir}"`);
-  sh(`git -C "${sourceDir}" checkout ${ref}`);
+  cloneSourceRepo(src, sourceDir);
+  checkoutSourceRef(sourceDir, ref);
 
   for (const item of COPY_FOLDERS) {
     const fromAbs = path.join(sourceDir, item.from);
@@ -435,13 +493,13 @@ function sync(args) {
     process.exit(0);
   }
 
-  sh("git add -A .github docs templates");
+  sh("git add -A .github docs");
   if (fs.existsSync(path.join(process.cwd(), ".pre-commit-config.yaml"))) {
     sh("git add .pre-commit-config.yaml");
   }
-  sh(`git commit -m "chore: sync standards (templates + docs + pre-commit + ci)"`);
-  sh(`git push -u origin ${args.branch}`);
-  sh(`gh pr create --base ${args.base} --head ${args.branch} --title "chore: sync standards" --body "Automated sync from ${src}@${ref}."`);
+  sh(`git commit -m "chore: sync standards (docs + pre-commit + ci)"`);
+  pushSyncBranch(args.branch);
+  createSyncPr(args.base, args.branch, src, ref);
   console.log("[gitsync] Done.");
 }
 
