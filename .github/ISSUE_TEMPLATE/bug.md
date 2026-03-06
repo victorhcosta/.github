@@ -46,6 +46,6 @@ Paste logs or stack trace.
 
 ## 📎 Related
 
-Epic: #EpicNumber  
-Feature: #FeatureNumber  
+Epic: #EpicNumber
+Feature: #FeatureNumber
 Task: #TaskNumber

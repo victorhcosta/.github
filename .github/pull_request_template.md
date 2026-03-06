@@ -74,6 +74,6 @@ Add test evidence, commands, and relevant outputs.
 
 ## 📎 Related
 
-Epic: #EpicNumber  
-Feature: #FeatureNumber  
+Epic: #EpicNumber
+Feature: #FeatureNumber
 Task/Bug: #IssueNumber

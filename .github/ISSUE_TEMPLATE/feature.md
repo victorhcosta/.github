@@ -14,8 +14,8 @@ Why is this needed?
 
 ## 👤 User Story
 
-As a `...`  
-I want `...`  
+As a `...`
+I want `...`
 So that `...`
 
 ---
