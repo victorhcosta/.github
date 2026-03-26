@@ -12,6 +12,7 @@ const COPY_FOLDERS = [
 const COPY_FILES = [];
 const AUTO_APPLY_PRECOMMIT = true;
 const AUTO_APPLY_CI = true;
+const NODE_TEMPLATES = new Set(["angular", "nextjs", "node", "react", "react-native"]);
 
 function sh(cmd, opts = {}) {
   return execSync(cmd, { stdio: "inherit", ...opts });
@@ -111,6 +112,119 @@ function getCfg(key, global = false) {
   } catch {
     return "";
   }
+}
+
+function readJsonIfExists(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function findFilesByName(rootDir, fileName, options = {}) {
+  const {
+    maxDepth = Infinity,
+    skipDirs = new Set([
+      ".git",
+      ".next",
+      ".nx",
+      ".turbo",
+      "build",
+      "coverage",
+      "dist",
+      "node_modules",
+      "tmp",
+    ]),
+  } = options;
+
+  const found = [];
+
+  function walk(currentDir, depth) {
+    if (depth > maxDepth) return;
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (!skipDirs.has(entry.name)) walk(fullPath, depth + 1);
+        continue;
+      }
+
+      if (entry.name === fileName) found.push(fullPath);
+    }
+  }
+
+  walk(rootDir, 0);
+  return found;
+}
+
+function detectNodePackageManager(targetRoot, packageJsonPaths = []) {
+  const candidates = [targetRoot, ...packageJsonPaths.map((filePath) => path.dirname(filePath))];
+
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "bun.lockb")) || fs.existsSync(path.join(dir, "bun.lock"))) return "bun";
+    if (fs.existsSync(path.join(dir, "pnpm-lock.yaml"))) return "pnpm";
+    if (fs.existsSync(path.join(dir, "yarn.lock"))) return "yarn";
+    if (fs.existsSync(path.join(dir, "package-lock.json")) || fs.existsSync(path.join(dir, "npm-shrinkwrap.json"))) return "npm";
+  }
+
+  return "npm";
+}
+
+function detectNodeProject(targetRoot) {
+  const packageJsonPaths = findFilesByName(targetRoot, "package.json", { maxDepth: 5 });
+  if (packageJsonPaths.length === 0) return null;
+
+  const rootPackageJson = readJsonIfExists(path.join(targetRoot, "package.json"));
+  const deps = {};
+
+  for (const packageJsonPath of packageJsonPaths) {
+    const pkg = readJsonIfExists(packageJsonPath);
+    if (!pkg) continue;
+    Object.assign(deps, pkg.dependencies || {}, pkg.devDependencies || {}, pkg.peerDependencies || {});
+  }
+
+  let template = "node";
+  let stack = "node";
+
+  if (deps["@angular/core"]) {
+    template = "angular";
+    stack = "node (angular)";
+  } else if (deps["react-native"]) {
+    template = "react-native";
+    stack = "node (react-native)";
+  } else if (deps.next) {
+    template = "nextjs";
+    stack = "node (nextjs)";
+  } else if (deps.react) {
+    template = "react";
+    stack = "node (react)";
+  }
+
+  const isMonorepo = Boolean(
+    packageJsonPaths.length > 1 ||
+    rootPackageJson?.workspaces ||
+    fs.existsSync(path.join(targetRoot, "pnpm-workspace.yaml")) ||
+    fs.existsSync(path.join(targetRoot, "turbo.json")) ||
+    fs.existsSync(path.join(targetRoot, "nx.json")) ||
+    fs.existsSync(path.join(targetRoot, "lerna.json"))
+  );
+
+  return {
+    stack: isMonorepo ? `${stack} monorepo` : stack,
+    template,
+    isMonorepo,
+    manager: detectNodePackageManager(targetRoot, packageJsonPaths),
+    packageJsonCount: packageJsonPaths.length,
+  };
 }
 
 function setCfg(key, value, global = false) {
@@ -235,30 +349,83 @@ function detectStack(targetRoot) {
   if (has("pom.xml")) return { stack: "java (maven)", template: "java-maven" };
   if (has("build.gradle") || has("build.gradle.kts")) return { stack: "java (gradle)", template: "java-gradle" };
 
-  if (has("package.json")) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(targetRoot, "package.json"), "utf8"));
-      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-      const hasDep = (name) => Boolean(deps[name]);
-
-      if (hasDep("@angular/core")) return { stack: "node (angular)", template: "angular" };
-      if (hasDep("react-native")) return { stack: "node (react-native)", template: "react-native" };
-      if (hasDep("next")) return { stack: "node (nextjs)", template: "nextjs" };
-      if (hasDep("react")) return { stack: "node (react)", template: "react" };
-      return { stack: "node", template: "node" };
-    } catch {
-      return { stack: "node", template: "node" };
-    }
-  }
+  const nodeProject = detectNodeProject(targetRoot);
+  if (nodeProject) return nodeProject;
 
   return { stack: "unknown", template: "" };
 }
 
-function applyPreCommitTemplate(sourceDir, targetRoot, templateName, srcRepo, ref) {
+function buildNodePreCommitTemplate(templateName, manager) {
+  const hooksByTemplate = {
+    angular: [
+      { id: "angular-lint", name: "Angular lint", script: "lint" },
+      { id: "angular-test", name: "Angular test", script: "test" },
+    ],
+    nextjs: [
+      { id: "next-lint", name: "Next lint", script: "lint" },
+      { id: "next-test", name: "Next test", script: "test" },
+      { id: "next-typecheck", name: "Next typecheck", script: "typecheck" },
+    ],
+    node: [
+      { id: "node-lint", name: "Node lint", script: "lint" },
+      { id: "node-test", name: "Node test", script: "test" },
+    ],
+    react: [
+      { id: "react-lint", name: "React lint", script: "lint" },
+      { id: "react-test", name: "React test", script: "test" },
+      { id: "react-typecheck", name: "React typecheck", script: "typecheck" },
+    ],
+    "react-native": [
+      { id: "rn-lint", name: "React Native lint", script: "lint" },
+      { id: "rn-test", name: "React Native test", script: "test" },
+      { id: "rn-typecheck", name: "React Native typecheck", script: "typecheck" },
+    ],
+  };
+
+  const hooks = hooksByTemplate[templateName] || hooksByTemplate.node;
+  const lines = [
+    "repos:",
+    "  - repo: https://github.com/pre-commit/pre-commit-hooks",
+    "    rev: v4.6.0",
+    "    hooks:",
+    "      - id: trailing-whitespace",
+    "      - id: end-of-file-fixer",
+    "      - id: check-merge-conflict",
+    "      - id: check-added-large-files",
+    "      - id: check-yaml",
+    "",
+    "  - repo: local",
+    "    hooks:",
+  ];
+
+  for (const hook of hooks) {
+    lines.push(
+      `      - id: ${hook.id}`,
+      `        name: ${hook.name}`,
+      `        entry: node .github/scripts/node-workspace.cjs run ${hook.script} ${manager}`,
+      "        language: system",
+      "        pass_filenames: false",
+      ""
+    );
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function applyPreCommitTemplate(sourceDir, targetRoot, detected, srcRepo, ref) {
+  const templateName = detected.template;
   if (!templateName) return;
 
-  const from = path.join(sourceDir, "templates", "pre-commit", templateName, ".pre-commit-config.yaml");
   const to = path.join(targetRoot, ".pre-commit-config.yaml");
+
+  if (NODE_TEMPLATES.has(templateName)) {
+    fs.writeFileSync(to, buildNodePreCommitTemplate(templateName, detected.manager || "npm"), "utf8");
+    console.log(`[gitsync] Applied pre-commit template: ${templateName} (${detected.manager || "npm"}) -> .pre-commit-config.yaml`);
+    console.log(`[gitsync] Other templates live at: ${srcRepo}/tree/${ref}/templates/pre-commit`);
+    return;
+  }
+
+  const from = path.join(sourceDir, "templates", "pre-commit", templateName, ".pre-commit-config.yaml");
 
   if (!fs.existsSync(from)) {
     console.log(`[gitsync] pre-commit template not found for "${templateName}". Skipping.`);
@@ -270,7 +437,31 @@ function applyPreCommitTemplate(sourceDir, targetRoot, templateName, srcRepo, re
   console.log(`[gitsync] Other templates live at: ${srcRepo}/tree/${ref}/templates/pre-commit`);
 }
 
-function buildTestSteps(templateName) {
+function buildNodeSetupSteps(manager) {
+  if (manager === "bun") {
+    return [
+      "      - uses: oven-sh/setup-bun@v2",
+      "      - run: node .github/scripts/node-workspace.cjs install bun",
+    ];
+  }
+
+  const cache = manager === "pnpm" || manager === "yarn" ? manager : "npm";
+  const lines = [
+    "      - uses: actions/setup-node@v4",
+    "        with:",
+    "          node-version: 20",
+    `          cache: ${cache}`,
+  ];
+
+  if (manager === "pnpm" || manager === "yarn") {
+    lines.push("      - run: corepack enable");
+  }
+
+  lines.push(`      - run: node .github/scripts/node-workspace.cjs install ${manager}`);
+  return lines;
+}
+
+function buildTestSteps(templateName, detected = {}) {
   if (templateName === "elixir") {
     return [
       "      - uses: erlef/setup-beam@v1",
@@ -308,6 +499,22 @@ function buildTestSteps(templateName) {
     ];
   }
 
+  if (NODE_TEMPLATES.has(templateName || "node")) {
+    const manager = detected.manager || "npm";
+    const steps = [
+      ...buildNodeSetupSteps(manager),
+      `      - run: node .github/scripts/node-workspace.cjs run lint ${manager}`,
+      `      - run: node .github/scripts/node-workspace.cjs run test ${manager}`,
+    ];
+
+    if (["nextjs", "react", "react-native"].includes(templateName)) {
+      steps.push(`      - run: node .github/scripts/node-workspace.cjs run typecheck ${manager}`);
+    }
+
+    steps.push(`      - run: node .github/scripts/node-workspace.cjs run build ${manager}`);
+    return steps;
+  }
+
   return [
     "      - uses: actions/setup-node@v4",
     "        with:",
@@ -320,8 +527,9 @@ function buildTestSteps(templateName) {
   ];
 }
 
-function buildCiWorkflow(templateName) {
-  const steps = buildTestSteps(templateName || "node");
+function buildCiWorkflow(detected) {
+  const templateName = detected.template || "node";
+  const steps = buildTestSteps(templateName, detected);
   const lines = [
     "name: CI",
     "",
@@ -373,11 +581,12 @@ function buildCiWorkflow(templateName) {
   return `${lines.join("\n")}\n`;
 }
 
-function applyCiWorkflow(targetRoot, templateName) {
+function applyCiWorkflow(targetRoot, detected) {
   const to = path.join(targetRoot, ".github", "workflows", "ci.yml");
   fs.mkdirSync(path.dirname(to), { recursive: true });
-  fs.writeFileSync(to, buildCiWorkflow(templateName), "utf8");
-  console.log(`[gitsync] Applied CI workflow template: ${templateName || "node"} -> .github/workflows/ci.yml`);
+  fs.writeFileSync(to, buildCiWorkflow(detected), "utf8");
+  const managerSuffix = detected.manager ? ` (${detected.manager})` : "";
+  console.log(`[gitsync] Applied CI workflow template: ${detected.template || "node"}${managerSuffix} -> .github/workflows/ci.yml`);
 }
 
 function createSyncBranch(branch) {
@@ -474,7 +683,7 @@ function sync(args) {
   console.log(`[gitsync] Detected stack: ${detected.stack}`);
 
   if (AUTO_APPLY_PRECOMMIT) {
-    if (detected.template) applyPreCommitTemplate(sourceDir, process.cwd(), detected.template, src, ref);
+    if (detected.template) applyPreCommitTemplate(sourceDir, process.cwd(), detected, src, ref);
     else {
       console.log("[gitsync] No pre-commit template applied (unknown stack).");
       console.log(`[gitsync] Templates: ${src}/tree/${ref}/templates/pre-commit`);
@@ -482,7 +691,7 @@ function sync(args) {
   }
 
   if (AUTO_APPLY_CI) {
-    applyCiWorkflow(process.cwd(), detected.template || "node");
+    applyCiWorkflow(process.cwd(), detected);
   }
 
   syncIssueTemplateConfigLinks(process.cwd());

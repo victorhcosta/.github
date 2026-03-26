@@ -90,6 +90,8 @@ gitsync --sync --source OWNER/.github --ref main
 - `.github/workflows/ci.yml` based on detected stack, with Docker, docker-compose, and k8s validation jobs
 - `.github/ISSUE_TEMPLATE/config.yml` `contact_links` based on current `origin` (`owner/repo`)
 
+For Node.js repositories, `gitsync` now also detects monorepos and package managers (`npm`, `pnpm`, `yarn`, `bun`) so generated CI and pre-commit hooks work for workspace-based projects too.
+
 ## Sync templates in target repository
 Inside the target repository:
 
