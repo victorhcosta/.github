@@ -21,7 +21,6 @@ function sh(cmd, opts = {}) {
 function shOut(cmd, opts = {}) {
   return execSync(cmd, { stdio: "pipe", encoding: "utf8", ...opts }).trim();
 }
-
 function die(msg) {
   console.error(`\n[gitsync] ERROR: ${msg}\n`);
   process.exit(1);
@@ -311,6 +310,7 @@ function parseArgs(argv) {
     else if (a === "--branch") out.branch = argv[++i];
     else if (a === "--source") out.source = argv[++i];
     else if (a === "--ref") out.ref = argv[++i];
+    else if (a === "--msg") out.msg = argv[++i];
     else if (a === "-h" || a === "--help") out.help = true;
     else die(`Unknown arg: ${a}`);
   }
@@ -413,10 +413,10 @@ function buildNodePreCommitTemplate(templateName, manager) {
 }
 
 function applyPreCommitTemplate(sourceDir, targetRoot, detected, srcRepo, ref) {
+  const to = path.join(targetRoot, ".pre-commit-config.yaml");
+
   const templateName = detected.template;
   if (!templateName) return;
-
-  const to = path.join(targetRoot, ".pre-commit-config.yaml");
 
   if (NODE_TEMPLATES.has(templateName)) {
     fs.writeFileSync(to, buildNodePreCommitTemplate(templateName, detected.manager || "npm"), "utf8");
@@ -706,7 +706,8 @@ function sync(args) {
   if (fs.existsSync(path.join(process.cwd(), ".pre-commit-config.yaml"))) {
     sh("git add .pre-commit-config.yaml");
   }
-  sh(`git commit -m "chore: sync standards (docs + pre-commit + ci)"`);
+   const commitMsg = args.msg ?? "chore: sync standards (docs + pre-commit + ci)";
+   sh(`git commit -m "${commitMsg}"`);
   pushSyncBranch(args.branch);
   createSyncPr(args.base, args.branch, src, ref);
   console.log("[gitsync] Done.");
@@ -736,3 +737,4 @@ function main() {
 }
 
 main();
+

@@ -42,6 +42,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--type") out.type = argv[++i];
     else if (a === "--base") out.base = argv[++i];
+    else if (a === "--msg") out.msg = argv[++i];
     else if (a === "-h" || a === "--help") out.help = true;
     else die(`Unknown arg: ${a}`);
   }
@@ -244,7 +245,8 @@ function prepare({ type, base }) {
   if (!porcelain) die("No changes after bump. Something is off.");
 
   sh(`git add "${projectFile}"`);
-  sh(`git commit -m "chore(release): bump version to ${next}"`);
+   const commitMsg = args.msg ?? `chore(release): bump version to ${next}`;
+   sh(`git commit -m "${commitMsg}"`);
 
   sh(`git push -u origin ${branch}`);
 
