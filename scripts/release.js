@@ -9,6 +9,9 @@ function sh(cmd, opts = {}) {
 function shOut(cmd, opts = {}) {
   return execSync(cmd, { stdio: "pipe", encoding: "utf8", ...opts }).trim();
 }
+function shWithInput(cmd, input) {
+  execSync(cmd, { input, stdio: ["pipe", "inherit", "inherit"] });
+}
 function die(msg) {
   console.error(`\n[release] ERROR: ${msg}\n`);
   process.exit(1);
@@ -244,7 +247,16 @@ function prepare({ type, base }) {
   if (!porcelain) die("No changes after bump. Something is off.");
 
   sh(`git add "${projectFile}"`);
-  sh(`git commit -m "chore(release): bump version to ${next}"`);
+   const coauthor = process.env.COAUTHOR_TRAILER || "OpenCode <opencode-agent@opencode.ai>";
+   const message = [
+     `chore(release): bump version to ${next}`,
+     "",
+     `- bump ${projectFile} from ${currentFileVersion} to ${next}`,
+     `- prepare release PR for v${next}`,
+     "",
+     `Co-authored-by: ${coauthor}`,
+   ].join("\n");
+   shWithInput("git commit -F -", message);
 
   sh(`git push -u origin ${branch}`);
 
