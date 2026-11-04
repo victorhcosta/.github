@@ -21,10 +21,6 @@ function sh(cmd, opts = {}) {
 function shOut(cmd, opts = {}) {
   return execSync(cmd, { stdio: "pipe", encoding: "utf8", ...opts }).trim();
 }
-function shWithInput(cmd, input) {
-  execSync(cmd, { input, stdio: ["pipe", "inherit", "inherit"] });
-}
-
 function die(msg) {
   console.error(`\n[gitsync] ERROR: ${msg}\n`);
   process.exit(1);
@@ -314,6 +310,7 @@ function parseArgs(argv) {
     else if (a === "--branch") out.branch = argv[++i];
     else if (a === "--source") out.source = argv[++i];
     else if (a === "--ref") out.ref = argv[++i];
+    else if (a === "--msg") out.msg = argv[++i];
     else if (a === "-h" || a === "--help") out.help = true;
     else die(`Unknown arg: ${a}`);
   }
@@ -417,10 +414,7 @@ function buildNodePreCommitTemplate(templateName, manager) {
 
 function applyPreCommitTemplate(sourceDir, targetRoot, detected, srcRepo, ref) {
   const to = path.join(targetRoot, ".pre-commit-config.yaml");
-  if (fs.existsSync(to) && !process.env.GITSYNC_FORCE_PRECOMMIT) {
-    console.log(`[gitsync] Preserving existing .pre-commit-config.yaml (set GITSYNC_FORCE_PRECOMMIT=1 to overwrite)`);
-    return;
-  }
+
   const templateName = detected.template;
   if (!templateName) return;
 
@@ -589,14 +583,11 @@ function buildCiWorkflow(detected) {
 
 function applyCiWorkflow(targetRoot, detected) {
   const to = path.join(targetRoot, ".github", "workflows", "ci.yml");
-  if (fs.existsSync(to) && !process.env.GITSYNC_FORCE_CI) {
-    console.log(`[gitsync] Preserving existing .github/workflows/ci.yml (set GITSYNC_FORCE_CI=1 to overwrite)`);
-    return;
-  }
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.writeFileSync(to, buildCiWorkflow(detected), "utf8");
   const managerSuffix = detected.manager ? ` (${detected.manager})` : "";
-   console.log(`[gitsync] Applied CI workflow template: ${detected.template || "node"}${managerSuffix} -> .github/workflows/ci.yml`);
+  console.log(`[gitsync] Applied CI workflow template: ${detected.template || "node"}${managerSuffix} -> .github/workflows/ci.yml`);
+}
 
 function createSyncBranch(branch) {
   try {
@@ -676,6 +667,7 @@ function sync(args) {
     const fromAbs = path.join(sourceDir, item.from);
     const toAbs = path.join(process.cwd(), item.to);
     if (!fs.existsSync(fromAbs)) continue;
+    removeIfExists(toAbs);
     copyDir(fromAbs, toAbs);
   }
 
@@ -714,17 +706,8 @@ function sync(args) {
   if (fs.existsSync(path.join(process.cwd(), ".pre-commit-config.yaml"))) {
     sh("git add .pre-commit-config.yaml");
   }
-   const coauthor = process.env.COAUTHOR_TRAILER || "OpenCode <opencode-agent@opencode.ai>";
-   const message = [
-     "chore: sync standards (docs + pre-commit + ci)",
-     "",
-     `- sync .github and docs/standards from ${src}@${ref}`,
-     "- merge into existing folders, preserving project-specific files",
-     "- apply pre-commit and CI templates only when missing",
-     "",
-     `Co-authored-by: ${coauthor}`,
-   ].join("\n");
-   shWithInput("git commit -F -", message);
+   const commitMsg = args.msg ?? "chore: sync standards (docs + pre-commit + ci)";
+   sh(`git commit -m "${commitMsg}"`);
   pushSyncBranch(args.branch);
   createSyncPr(args.base, args.branch, src, ref);
   console.log("[gitsync] Done.");

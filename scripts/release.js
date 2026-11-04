@@ -9,9 +9,6 @@ function sh(cmd, opts = {}) {
 function shOut(cmd, opts = {}) {
   return execSync(cmd, { stdio: "pipe", encoding: "utf8", ...opts }).trim();
 }
-function shWithInput(cmd, input) {
-  execSync(cmd, { input, stdio: ["pipe", "inherit", "inherit"] });
-}
 function die(msg) {
   console.error(`\n[release] ERROR: ${msg}\n`);
   process.exit(1);
@@ -45,6 +42,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--type") out.type = argv[++i];
     else if (a === "--base") out.base = argv[++i];
+    else if (a === "--msg") out.msg = argv[++i];
     else if (a === "-h" || a === "--help") out.help = true;
     else die(`Unknown arg: ${a}`);
   }
@@ -247,16 +245,8 @@ function prepare({ type, base }) {
   if (!porcelain) die("No changes after bump. Something is off.");
 
   sh(`git add "${projectFile}"`);
-   const coauthor = process.env.COAUTHOR_TRAILER || "OpenCode <opencode-agent@opencode.ai>";
-   const message = [
-     `chore(release): bump version to ${next}`,
-     "",
-     `- bump ${projectFile} from ${currentFileVersion} to ${next}`,
-     `- prepare release PR for v${next}`,
-     "",
-     `Co-authored-by: ${coauthor}`,
-   ].join("\n");
-   shWithInput("git commit -F -", message);
+   const commitMsg = args.msg ?? `chore(release): bump version to ${next}`;
+   sh(`git commit -m "${commitMsg}"`);
 
   sh(`git push -u origin ${branch}`);
 
